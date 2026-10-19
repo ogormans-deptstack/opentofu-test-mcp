@@ -1,0 +1,117 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Require tag and package versions to agree
+        run: |
+          VERSION=$(jq -r .version server.json)
+          test "$GITHUB_REF_NAME" = "v$VERSION"
+          jq -e --arg version "$VERSION" '
+            .packages[0].version == $version and
+            .packages[0].identifier == ("ghcr.io/ogormans-deptstack/opentofu-test-mcp:" + $version)
+          ' server.json
+
+  checks:
+    needs: check-version
+    uses: ./.github/workflows/ci.yml
+
+  binaries:
+    needs: checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+      - name: Build release archives
+        run: bash scripts/build-release.sh "${GITHUB_REF_NAME#v}"
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
+          fi
+          gh release upload "$GITHUB_REF_NAME" dist/release/* --clobber
+
+  image:
+    needs: checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Read release version
+        id: version
+        run: echo "value=$(jq -r .version server.json)" >> "$GITHUB_OUTPUT"
+      - name: Publish OCI image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/ogormans-deptstack/opentofu-test-mcp:${{ steps.version.outputs.value }}
+          build-args: VERSION=${{ steps.version.outputs.value }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - name: Inspector smoke tests against published image
+        run: npm run test:mcp
+        env:
+          MCP_IMAGE: ghcr.io/ogormans-deptstack/opentofu-test-mcp:${{ steps.version.outputs.value }}
+          MCP_EXPECTED_VERSION: ${{ steps.version.outputs.value }}
+      - name: Require anonymous image access for registry users
+        run: |
+          docker logout ghcr.io
+          IMAGE=$(jq -r '.packages[0].identifier' server.json)
+          if ! docker manifest inspect "$IMAGE" >/dev/null; then
+            echo "::error::Set the GHCR package visibility to public, then rerun failed jobs."
+            exit 1
+          fi
+
+  registry:
+    needs: [binaries, image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install verified mcp-publisher
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v1.8.1 --repo modelcontextprotocol/registry \
+            --pattern mcp-publisher_linux_amd64.tar.gz \
+            --pattern registry_1.8.1_checksums.txt
+          grep ' mcp-publisher_linux_amd64.tar.gz$' registry_1.8.1_checksums.txt | sha256sum --check -
+          tar xzf mcp-publisher_linux_amd64.tar.gz mcp-publisher
+      - run: ./mcp-publisher validate server.json
+      - run: ./mcp-publisher login github-oidc
+      - run: ./mcp-publisher publish server.json

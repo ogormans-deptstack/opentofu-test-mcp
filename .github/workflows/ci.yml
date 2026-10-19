@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -21,3 +25,37 @@ jobs:
         run: go build ./...
       - name: test
         run: go test -race -cover ./...
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: "1.13.1"
+          tofu_wrapper: false
+      - run: npm ci
+      - name: Build stdio server
+        run: go build -o dist/opentofu-test-mcp .
+      - name: Inspector smoke tests
+        run: npm run test:mcp
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - uses: docker/setup-buildx-action@v3
+      - name: Build OCI image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: opentofu-test-mcp:ci
+      - name: Inspector smoke tests against OCI image
+        run: npm run test:mcp
+        env:
+          MCP_IMAGE: opentofu-test-mcp:ci

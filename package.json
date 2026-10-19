@@ -1,0 +1,14 @@
+{
+  "name": "opentofu-test-mcp-dev",
+  "private": true,
+  "scripts": {
+    "test:mcp": "node --test scripts/inspector.test.mjs",
+    "inspect": "mcp-inspector ./dist/opentofu-test-mcp"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/inspector": "2.11.0"
+  }
+}

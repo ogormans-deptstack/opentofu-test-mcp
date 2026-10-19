@@ -1,3 +1,7 @@
 /opentofu-test-mcp
 /dist/
 *.test
+/node_modules/
+.terraform/
+*.tfstate
+*.tfstate.*
