@@ -1,0 +1,22 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.ogormans-deptstack/opentofu-test",
+  "description": "MCP server for the OpenTofu/Terraform native test framework: scaffold, mock, validate, run tests",
+  "title": "OpenTofu Test",
+  "repository": {
+    "url": "https://github.com/ogormans-deptstack/opentofu-test-mcp",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "oci",
+      "registryBaseUrl": "https://ghcr.io",
+      "identifier": "ghcr.io/ogormans-deptstack/opentofu-test-mcp",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
