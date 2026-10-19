@@ -146,7 +146,10 @@ test("missing required input returns a tool error and Inspector exit code 5", ()
 test("registry version and OCI tag agree", () => {
   const metadata = JSON.parse(readFileSync(join(root, "server.json"), "utf8"));
   assert.ok(metadata.description.length <= 100);
-  assert.equal(metadata.packages[0].version, metadata.version);
+  assert.equal(metadata.packages[0].registryType, "oci");
+  for (const field of ["registryBaseUrl", "version", "fileSha256"]) {
+    assert.equal(Object.hasOwn(metadata.packages[0], field), false, `OCI forbids ${field}`);
+  }
   assert.equal(
     metadata.packages[0].identifier,
     `ghcr.io/ogormans-deptstack/opentofu-test-mcp:${metadata.version}`,

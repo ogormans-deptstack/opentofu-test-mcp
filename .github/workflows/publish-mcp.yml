@@ -1,0 +1,41 @@
+name: Publish MCP Registry
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: mcp-registry-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Require canonical OCI metadata
+        run: |
+          jq -e '
+            .version as $version |
+            (.packages[0] | has("registryBaseUrl") or has("version") or has("fileSha256") | not) and
+            .packages[0].registryType == "oci" and
+            .packages[0].identifier == ("ghcr.io/ogormans-deptstack/opentofu-test-mcp:" + $version)
+          ' server.json
+      - name: Verify public image
+        run: docker manifest inspect "$(jq -r '.packages[0].identifier' server.json)" >/dev/null
+      - name: Install verified mcp-publisher
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v1.8.1 --repo modelcontextprotocol/registry \
+            --pattern mcp-publisher_linux_amd64.tar.gz \
+            --pattern registry_1.8.1_checksums.txt
+          grep ' mcp-publisher_linux_amd64.tar.gz$' registry_1.8.1_checksums.txt | sha256sum --check -
+          tar xzf mcp-publisher_linux_amd64.tar.gz mcp-publisher
+      - run: ./mcp-publisher validate server.json
+      - run: ./mcp-publisher login github-oidc
+      - run: ./mcp-publisher publish server.json

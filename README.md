@@ -150,7 +150,7 @@ files or captured transcripts.
 
 ## Releasing
 
-1. Update `server.json`'s top-level version, package version, and OCI identifier
+1. Update `server.json`'s top-level version and OCI identifier
    tag together. Commit the changes and wait for CI on that commit.
 2. Tag that tested commit (for example `git tag v0.1.0`) and push the tag.
    `.github/workflows/release.yml` refuses mismatched versions and reruns CI.
@@ -170,7 +170,17 @@ and [GitHub Actions guide](https://github.com/modelcontextprotocol/registry/blob
 The registry hosts metadata, not the binary or image, so the package must be
 publicly available first. Do not submit a PR to the registry repository.
 
-If only registry publication needs retrying outside Actions:
+OCI package entries must not contain `registryBaseUrl`, `version`, or
+`fileSha256`; the full registry and version belong in `identifier`. The
+publisher's `validate` command does not perform every package-specific check
+that `publish` does, so the smoke suite checks those constraints too.
+
+To retry registry publication after a metadata-only correction without moving
+the release tag or rebuilding artifacts, push the correction and dispatch the
+registry-only workflow: `gh workflow run publish-mcp.yml --ref main`. It checks
+the existing public image and uses OIDC, just like the tag-triggered release.
+
+For registry publication outside Actions:
 
 ```sh
 mcp-publisher validate server.json
