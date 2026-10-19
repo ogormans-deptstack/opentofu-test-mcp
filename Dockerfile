@@ -10,12 +10,16 @@ ARG VERSION=dev
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/opentofu-test-mcp .
 
-FROM ghcr.io/opentofu/opentofu:1.13.1
+FROM ghcr.io/opentofu/opentofu:1.13.1-minimal AS tofu
+
+FROM alpine:3.23
+RUN apk add --no-cache ca-certificates git
 ARG VERSION=dev
 LABEL org.opencontainers.image.source="https://github.com/ogormans-deptstack/opentofu-test-mcp" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version="${VERSION}" \
       io.modelcontextprotocol.server.name="io.github.ogormans-deptstack/opentofu-test"
 COPY --from=build /out/opentofu-test-mcp /usr/local/bin/opentofu-test-mcp
+COPY --from=tofu /usr/local/bin/tofu /usr/local/bin/tofu
 WORKDIR /workspace
 ENTRYPOINT ["opentofu-test-mcp"]
